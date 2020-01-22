@@ -1,0 +1,111 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# The data
+```{r}
+tmp = scan("sigref.csv", sep = ',')
+sig = matrix(tmp, ncol = 120, byrow = T)
+dim(sig)
+```
+
+```{r}
+#data = read.csv2("sigref.csv", sep = ",", header = F)
+#data = apply(data,1,as.numeric)
+#sig = as.matrix(data)
+#dim(sig)
+```
+
+```{r}
+sig[1,]
+```
+
+```{r}
+mycol = rainbow(n = 120)
+plot(sig[1,], col = mycol[1])
+for(i in 2:nrow(sig)){
+points(sig[i,], col = mycol[i])}
+```
+
+# PCA on functional data
+
+## Centering the signals
+```{r}
+sig_c = scale(sig, center = T, scale = F)
+```
+
+## PCA
+```{r}
+res.pca = prcomp(sig_c, center = F)
+plot(res.pca)
+```
+
+```{r}
+#summary(res.pca)
+```
+ 4 axes factoriels necessaires pour avoir 99 $\%$ de la variance expliquée.
+ 
+# Signal compression
+
+(affichage des 4 premiers vecteurs propres calculés à la main)
+
+```{r}
+w = t(sig_c) %*% sig_c
+res.svd = eigen(w)
+par(mfrow = c(2,2))
+plot(res.svd$vectors[,1], col = "blue")
+plot(res.svd$vectors[,2], col = "red")
+plot(res.svd$vectors[,3], col = "orange")
+plot(res.svd$vectors[,4], col = "steelblue")
+```
+
+ 
+ 
+On choisis le signal 25 de la matrice centrée et 4 axes principaux
+
+```{r}
+plot(sig[25,], col = mycol[25])
+```
+
+
+```{r}
+s_25 = sig[25,]
+#y_25 = Y[25,]
+s_bar = res.pca$center #moyenne e chaque colonne de sig
+s_25_hat = s_bar + res.pca$x[25,1]*res.pca$rotation[1] + res.pca$x[25,2]*res.pca$rotation[2] + res.pca$x[25,3]*res.pca$rotation[3] + res.pca$x[25,4]*res.pca$rotation[4] 
+#res.pca$x = sig * matrice des vecteurs propres
+# res.pca$rotation = matrice vecteurs propres
+```
+```{r}
+dim(res.pca$rotation)
+dim(res.pca$x)
+```
+
+```{r}
+plot(s_25_hat, col = "red")
+points(sig[25,], col = "green")
+```
+
+```{r}
+sq.err.vec = (s_25 - s_25_hat)^2
+plot(sq.err.vec)
+err = sum(sq.err.vec)
+err
+```
+Pour respecter les notations du cours:
+ 
+```{r}
+X = sig_c
+U = res.svd$vectors
+Y = X %*% U
+```
+
+Pour la reconstruction de tous les signaux:
+```{r}
+
+```
+
+
+
+

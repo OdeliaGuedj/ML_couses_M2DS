@@ -1,0 +1,391 @@
+---
+title: "TP Clustering"
+output: html_notebook
+---
+
+# 1. Mixture of models and the EM algorithm
+
+## 1.1 Mixture of Gaussian
+
+### Données
+
+```{r}
+irm = as.matrix(read.table("irm_thorax.txt", header = F, sep = ";"))
+```
+
+```{r}
+image(irm)
+```
+
+```{r}
+hist(irm, xlim = c(50,300))
+```
+### Algoritme EM
+
+```{r}
+irm_vec = as.numeric(irm)
+```
+
+
+#### Fonction d'initialisation aléatoire des paramétres
+
+Pour les moyennes on choisit au hasard des pixels dans l'image qui vont jouer le rôle des k-centres
+Ici on sait que ce sont des images donc le plus judicieux serait de prendre 3 valeurs au hasard entre 0 et 255
+
+Pour les variances toutes les mêmes variances car on n'a aucune idée de la valeur à prendre
+
+Pour les prop on commence simple : à l'initialisation on suppose qu'elle sonr égales et valent $1 \over {nbr  ~cluster}$
+```{r}
+# x: dataset sous forme vectorielle
+# K : nombre de clusters 
+
+init.random.EM = function(x,K){
+  mus = sample(0:255,K)
+  sds = rep(sd(x),K) # par ex on peut choisir n'importe quel chiffre
+  pis = rep(1/K,K)
+  return(parameters = list(mus=mus, sds=sds, pis=pis))
+}
+```
+```{r}
+init.kmeans.EM = function(x, K){
+  n = length(x)
+  res.kmeans = kmeans(x, K)
+  mus = as.numeric(res.kmeans$centers)
+  sds = sqrt(res.kmeans$withinss/(table(res.kmeans$clusters)))
+  pis = rep(1/K, K)
+  return(parameters = list(mus=mus, sds=sds, pis=pis))
+
+}
+```
+
+
+#### Etape E 
+
+On calcule la responsabilité pour l'observation n d'apartenir au cluster k, et ce pour chaque obs et chaque k
+
+```{r}
+E.step = function(x,parameters){
+  K = length(parameters$mus)
+  # On initialise la matrice contennant les gamma_nk avec des 0.
+  # La matrice a autant de lignes que d'individus et autant de colonnes que de clusters 
+  gama_nk = matrix(0,length(x),K)
+  for(k in 1:K){
+    gama_nk[,k] = parameters$pis[k]*dnorm(x, mean = parameters$mus[k], sd = parameters$sds[k])
+  }
+  
+  return(gama_nk = gama_nk/rowSums(gama_nk))
+}
+```
+
+
+#### Etape M
+
+On recalcule tous les paramètres du modèle avec les formules ittératives du cours
+
+```{r}
+M.step = function(x, gama_nk, parameters){
+  K = length(parameters$mus)
+  parameters$pis = colSums(gama_nk)/length(x)
+  for (k in 1:K){
+    parameters$mus[k] = sum(gama_nk[,k]*x) / sum(gama_nk[,k])
+    parameters$sds[k]= sqrt(sum(gama_nk[,k]*(x - parameters$mus[k])^2)/ sum(gama_nk[,k]))
+  }
+  return(parameters)
+}
+```
+
+#### Fonction finale de l'algo EM  avec initialisation random
+
+```{r}
+EM = function(x,K){
+  parameters = init.random.EM(x,K)
+  iter = 0
+  parameters.new = parameters
+  repeat{
+    gama_nk = E.step(x,parameters)
+    parameters.new = M.step(x,gama_nk,parameters)
+    if ((sum(unlist(parameters.new) - unlist(parameters))^2)/
+        sum(unlist(parameters.new))^2< 1e-20) break
+    parameters<-parameters.new
+  }
+  return(list(parameters=parameters.new, gama_nk = gama_nk))
+}
+```
+
+#### Tests with 2,3,5 Gaussians
+```{r}
+res.EM.irm.2 = EM(irm_vec,2)
+res.EM.irm.3 = EM(irm_vec,3)
+res.EM.irm.5 = EM(irm_vec,5)
+res.EM.irm.2$parameters
+res.EM.irm.3$parameters
+res.EM.irm.5$parameters
+```
+```{r}
+cluster.2 = apply(res.EM.irm.2$gama_nk,1,which.max)
+mus.2 = ifelse(cluster.2 == 1, res.EM.irm.2$parameters$mus[1], res.EM.irm.2$parameters$mus[2])
+irm_vec.2 = cbind(irm_vec,cluster.2,mus.2)
+
+cluster.3 = apply(res.EM.irm.3$gama_nk,1,which.max)
+mus.3 = vector(length = length(cluster.3))
+mus.3[cluster.3 == 1] = res.EM.irm.3$parameters$mus[1]
+mus.3[cluster.3 == 2] = res.EM.irm.3$parameters$mus[2]
+mus.3[cluster.3 == 3] = res.EM.irm.3$parameters$mus[3]
+irm_vec.3 = cbind(irm_vec,cluster.3,mus.3)
+
+cluster.5 = apply(res.EM.irm.5$gama_nk,1,which.max)
+mus.5 = vector(length = length(cluster.3))
+mus.5[cluster.5 == 1] = res.EM.irm.5$parameters$mus[1]
+mus.5[cluster.5 == 2] = res.EM.irm.5$parameters$mus[2]
+mus.5[cluster.5 == 3] = res.EM.irm.5$parameters$mus[3]
+mus.5[cluster.5 == 4] = res.EM.irm.5$parameters$mus[4]
+mus.5[cluster.5 == 5] = res.EM.irm.5$parameters$mus[5]
+irm_vec.5 = cbind(irm_vec,cluster.5,mus.5)
+```
+```{r}
+par(mfrow = c(2,2))
+image(irm)
+title(main = "Image initiale")
+image(matrix(irm_vec.2[,"mus.2"], 70,70))
+title(main = "Avec 2 clusters")
+image(matrix(irm_vec.3[,"mus.3"], 70,70))
+title(main = "Avec 3 clusters")
+image(matrix(irm_vec.5[,"mus.5"], 70,70))
+title(main = "Avec 5 clusters")
+```
+
+## 1.2 Mixing regressions by the EM algorithm
+
+### Data
+```{r}
+library(mixtools)
+```
+```{r}
+reg_data = as.matrix(read.table("regression_double.txt", header = F, sep = ";"))
+```
+
+
+```{r}
+#image(reg_data)
+plot(x = reg_data[,1], y = reg_data[,2])
+```
+
+
+### regMixEM function with 2 linear regressions
+```{r}
+reg_data.EM =  regmixEM(y = reg_data[,2], x = reg_data[,1], lambda = NULL, beta = NULL, sigma = NULL, k = 2, verb = F)
+```
+```{r}
+cat("Coeffs"," \n")
+reg_data.EM$beta
+cat("\n")
+cat("Proportions des 2 clusters","\n")
+reg_data.EM$lambda
+```
+
+### Display of the results
+```{r}
+plot.mixEM(reg_data.EM, whichplots = 2)
+```
+
+```{r}
+plot(reg_data[,1], reg_data[,2])
+lines(reg_data[,1], reg_data.EM$beta[2,1]*reg_data[,1] +reg_data.EM$beta[1,1], col = "red")
+lines(reg_data[,1], reg_data.EM$beta[2,2]*reg_data[,1] +reg_data.EM$beta[1,2], col = "blue")
+```
+
+### Residuals Computation
+
+```{r}
+clus_reg.2 = as.factor(apply(reg_data.EM$posterior,1,which.max))
+reg_data_clus = data.frame(data = reg_data, clusters = clus_reg.2)
+library(ggplot2)
+ggplot(reg_data_clus, aes(x = data.V1, y = data.V2, col = reg_data_clus$clusters)) + geom_point()
+```
+```{r}
+pow.2 = function(a){a^2}
+residuals.computation = function(real, predicted){
+  tmp = matrix(c(real,predicted), ncol = 2, nrow = 100)
+  tmp.2 = abs(tmp[,1] - tmp[,2])
+  tmp.3 = lapply(tmp.2, pow.2)
+  sum(unlist(tmp.3))
+  }
+
+resid.gp.1 = residuals.computation(reg_data[,2],reg_data.EM$beta[2,1]*reg_data[,1] +reg_data.EM$beta[1,1] )
+resid.gp.2 = residuals.computation(reg_data[,2],reg_data.EM$beta[2,2]*reg_data[,1] +reg_data.EM$beta[1,2] )
+```
+
+
+### regmixEM with max iter = 1,3,5
+```{r}
+#set.seed(100)
+reg_data.EM.1 =  regmixEM(reg_data[,1], reg_data[,2], lambda = NULL, beta = NULL, sigma = NULL, k = 2, verb = F, maxit = 1)
+reg_data.EM.3 =  regmixEM(reg_data[,1], reg_data[,2], lambda = NULL, beta = NULL, sigma = NULL, k = 2, verb = F, maxit = 3)
+reg_data.EM.5 =  regmixEM(reg_data[,1], reg_data[,2], lambda = NULL, beta = NULL, sigma = NULL, k = 2, verb = F, maxit = 5)
+```
+
+
+### Prediction error 
+
+
+
+# 2. Spectral Clustering
+
+## 2.1 Creation of data sets
+
+### Question 1
+```{r}
+mysimu = function(n, radius, sigma){
+  if(n %% length(radius) != 0){return("length of radius must be a multiple of n ")}
+  if(sigma >= 0.5){print("Carreful, too much noise will mess up the circle shape. Choose values betwenn 0 and 0.1")}
+  nc = length(radius)
+  np = n/length(radius)
+  theta = runif(np, min = 0, max = 2*pi)
+  x = list()
+  y = list()
+  for(i in 1:nc){
+    x[[i]] = radius[i]*cos(theta)
+    mu.x = mean(x[[i]])
+    x[[i]] = x[[i]] + rnorm(n = np, mean = mu.x, sd = sigma)
+    y[[i]] = radius[i]*sin(theta)
+    mu.y = mean(y[[i]])
+    y[[i]] = radius[i]*sin(theta) + rnorm(n = np, mean = mu.y, sd = sigma)
+  }
+  return(list("Number of circles" = length(radius), x = x, y = y))
+}
+```
+
+### Question 2
+```{r}
+sim = mysimu(450, c(0,1,2), 0.05)
+plot(sim$x[[3]], sim$y[[3]], col = "blue",asp = 1, xlab = "", ylab = "")
+points(sim$x[[2]], sim$y[[2]], col = "steelblue")
+points(sim$x[[1]], sim$y[[1]], col = "skyblue")
+```
+
+## 2.2 Spectral Clustering Algorithm
+
+### Question 1: Distance matrix Z
+
+```{r}
+m.dist.2D = function(d.simu, squared){ 
+  if(class(squared) != "logical"){return("squared must be logical")}
+  obs = as.matrix(cbind(unlist(d.simu$x), unlist(d.simu$y)))
+  n = dim(obs)[1]
+  d = matrix(nrow = n, ncol = n)
+  for(i in 1:n){
+    for(j in 1:n){
+        d[i,j] = (obs[i,1] - obs[j,1])^2 + (obs[i,2] - obs[j,2])^2
+    }
+  }
+  if(squared == T){return(d)}
+  else if(squared == F){return(sqrt(d))}
+}
+```
+
+
+```{r}
+Z = m.dist.2D(sim, squared = T)
+dim(Z)
+class(Z)
+```
+
+### Question 2 : Affinity matrix W
+```{r}
+m.affinity = function(m_dist, mu){
+  return(exp(-m_dist/2*(mu^2)))
+  
+}
+```
+
+```{r}
+W = m.affinity(Z,0.1)
+dim(W)
+```
+
+### Question 3: Laplacian graph matrix
+####  Degree matrix
+
+```{r}
+m.degree = function(m_affinity){
+  return(diag(apply(m_affinity, 1, sum)))
+}
+```
+
+```{r}
+D = m.degree((W))
+dim(D)
+```
+
+```{r}
+m.laplacian = function(m_degree, m_affinity){
+  n = dim(m_degree)[1]
+  I = diag(1, n)
+  return(I - sqrt(solve(m_degree)) %*% m_affinity %*% sqrt(solve(m_degree)))
+}
+```
+
+```{r}
+L = m.laplacian(D, W)
+dim(L)
+```
+
+### Question 4 : Singular Value Decomposition of the Laplacian Graph matrix
+
+```{r}
+SVD = function(m_laplacian,K){
+  n = dim(m_laplacian)[1]
+  res = eigen(m_laplacian)
+  values = res$values[n:(n-K+1)]
+  vectors = matrix(res$vectors[,n:(n-K+1)], nrow = n, ncol = K)
+  return(list(values = values, vectors = vectors))
+}
+```
+```{r}
+res.L = eigen(L)
+res.L$values[450:(450-3)]
+tail(res.L$values)
+```
+
+```{r}
+U = SVD(L,K = 3)$vectors
+dim(U)
+E = diag(SVD(L, K = 3)$values)
+dim(E)
+E
+```
+
+### Question 5 : Normalization step
+
+```{r}
+normalization = function(m){
+  for(i in 1:nrow(m)){
+    norm_tmp = 0
+    for(j in 1:ncol(m)){
+      norm_tmp = norm_tmp + (m[i,j])^2
+    }
+    norm_tmp = sqrt(norm_tmp)
+    m[i,] = m[i,]/norm_tmp
+  }
+  return(m)
+}
+```
+
+```{r}
+U_star = normalization(U)
+dim(U_star)
+```
+
+### Question 6 :  K means algorithm to cluster the n obs (in U_star)
+```{r}
+res.kmeans = kmeans(U_star, centers = 3)
+table(res.kmeans$cluster)
+```
+```{r}
+# graphical representation
+```
+
+
+
+
+ 

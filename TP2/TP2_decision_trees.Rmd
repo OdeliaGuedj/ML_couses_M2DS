@@ -1,0 +1,115 @@
+---
+title: "TP 2 ML"
+output: html_document
+---
+
+
+## simualted data
+
+```{r}
+library(mvtnorm)
+```
+
+```{r}
+X1=rmvnorm(200,mean=c(0,0),sigma=matrix(c(0.6,0,0,0.3),ncol=2))
+X2=rmvnorm(200,mean=c(2,2),sigma=matrix(c(0.1,0,0,0.9),ncol=2))
+
+```
+
+```{r}
+X1b=cbind(X1,1)
+X2r=cbind(X2,2)
+Z=data.frame(rbind(X1b,X2r))
+plot(Z[,c(1,2)],col=c("blue","red")[Z[,3]],ylim = c())
+```
+
+
+```{r}
+library(tree)
+```
+
+
+```{r}
+names(Z)[3]="Y"
+
+head(Z)
+```
+
+transformation de la variable Y en facteur
+
+```{r}
+Z$Y = as.factor(Z$Y)
+head(Z)
+```
+
+```{r}
+modtree=tree(Y~. , data = Z)
+plot(modtree); text(modtree, cex = 0.8)
+```
+```{r}
+K=40
+seqx1 = seq(min(Z[,1]), max(Z[,1]), length = K)
+seqx2 = seq(min(Z[,2]),max(Z[,2]), length = K)
+mygrid = expand.grid(z1 = seqx1, z2 = seqx2)
+names(mygrid) = c("X1","X2")
+
+red2 = rgb(red = 254/255, green = 231/255, blue = 240/255, alpha = .2)
+blue2 = rgb(red = 51/255, green = 161/255, blue = 201/255, alpha = .6)
+```
+
+```{r}
+prediction = as.numeric(predict(modtree, newdata=mygrid, type="class"))
+plot.new()
+image(seqx1, seqx2, matrix(prediction, K), col=c(blue2, red2), xlab="", ylab="")
+points(Z[,c(1,2)],col=c("blue","red")[Z[,3]],ylim = c())
+contour(seqx1, seqx2, matrix(prediction, K), nlevels=1, col="black", add=T)
+```
+
+```{r}
+library(ipred)
+```
+
+```{r}
+modbag = bagging(Y~., data=Z, coob=T)
+summary(modbag)
+```
+
+
+```{r}
+prediction_bag = as.numeric(predict(modbag, newdata=mygrid, type="class"))
+plot.new()
+image(seqx1, seqx2, matrix(prediction_bag, K), col=c(blue2, red2), xlab="", ylab="")
+points(Z[,c(1,2)],col=c("blue","red")[Z[,3]],ylim = c())
+contour(seqx1, seqx2, matrix(prediction_bag, K), nlevels=1, col="black", add=T)
+```
+
+```{r}
+library(randomForest)
+mod_rf = randomForest(Z[,c(1,2)], Z[,3])
+mod_rf
+```
+
+```{r}
+prediction_rf = as.numeric(predict(mod_rf, newdata=mygrid, type="class"))
+plot.new()
+image(seqx1, seqx2, matrix(prediction_rf, K), col=c(blue2, red2), xlab="", ylab="")
+points(Z[,c(1,2)],col=c("blue","red")[Z[,3]],ylim = c())
+contour(seqx1, seqx2, matrix(prediction_rf, K), nlevels=1, col="black", add=T)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
